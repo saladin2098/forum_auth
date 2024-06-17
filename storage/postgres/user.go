@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	pb "github.com/saladin2098/forum_auth/genproto"
@@ -22,11 +23,12 @@ func NewUserStorage(db *sql.DB) *UserStorage {
 
 func (s *UserStorage) RegisterUser(user *pb.User) (*pb.User, error) {
 	query := `insert into users(
-		user_id,
+		id,
         username,
         email,
         password
-	)`
+	) values($1,$2,$3,$4)`
+	log.Println(user)
 	_, err := s.db.Exec(query,
 		user.UserId,
 		user.UserName,
@@ -39,10 +41,10 @@ func (s *UserStorage) RegisterUser(user *pb.User) (*pb.User, error) {
 }
 func (s *UserStorage) LoginUser(logreq *pb.LoginReq) (*pb.Token, error) {
 	var usernameDB, passwordDB, user_id string
-	query := `select user_id,username,password from users where username = $1`
+	query := `select id,username,password from users where username = $1`
 	err := s.db.QueryRow(query, logreq.UserName).Scan(&user_id, &usernameDB, &passwordDB)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("incorrect login credentials")
 	}
 	qualify := true
 	if passwordDB != logreq.Password || usernameDB != logreq.UserName {
@@ -59,7 +61,7 @@ func (s *UserStorage) LoginUser(logreq *pb.LoginReq) (*pb.Token, error) {
 }
 func (s *UserStorage) GetUserInfo(username *pb.ByUsername) (*pb.User, error) {
 	query := `select 
-			user_id,
+			id,
 			username,
 			email,
 			password
@@ -78,9 +80,10 @@ func (s *UserStorage) GetUserInfo(username *pb.ByUsername) (*pb.User, error) {
 }
 
 func (s *UserStorage) UpdateUser(user *pb.User) (*pb.User, error) {
-	query := `update users set `
+	query := `UPDATE users SET `
 	var conditions []string
 	var args []interface{}
+
 	if user.UserName != "" && user.UserName != "string" {
 		conditions = append(conditions, fmt.Sprintf("username = $%d", len(args)+1))
 		args = append(args, user.UserName)
@@ -93,30 +96,27 @@ func (s *UserStorage) UpdateUser(user *pb.User) (*pb.User, error) {
 		conditions = append(conditions, fmt.Sprintf("password = $%d", len(args)+1))
 		args = append(args, user.Password)
 	}
+
 	if len(conditions) == 0 {
 		return nil, errors.New("nothing to update")
 	}
-	query += strings.Join(conditions, ",")
-	query += ` where user_id = $%d returning 
-								user_id, 
-								username, 
-								email, 
-								password`
+
+	query += strings.Join(conditions, ", ")
+	query += fmt.Sprintf(" WHERE id = $%d RETURNING id, username, email, password", len(args)+1)
 	args = append(args, user.UserId)
-	var res *pb.User
+
+	res := &pb.User{}
 	row := s.db.QueryRow(query, args...)
-	err := row.Scan(
-        &res.UserId,
-        &res.UserName,
-        &res.Email,
-        &res.Password)
+
+	err := row.Scan(&res.UserId, &res.UserName, &res.Email, &res.Password)
 	if err != nil {
 		return nil, err
 	}
+
 	return res, nil
 }
 func (s *UserStorage) DeleteUser(id *pb.ById) (*pb.Void, error) {
-	query := `delete from users where user_id = $1`
+	query := `delete from users where id = $1`
     _, err := s.db.Exec(query, id.Id)
     if err!= nil {
         return nil, err
@@ -126,7 +126,7 @@ func (s *UserStorage) DeleteUser(id *pb.ById) (*pb.Void, error) {
 
 func (s *UserStorage) GetUsers(*pb.Void) (*pb.Users, error) {
 	query := `select 
-            user_id,
+            id,
             username,
             email,
             password
@@ -136,7 +136,7 @@ func (s *UserStorage) GetUsers(*pb.Void) (*pb.Users, error) {
         return nil, err
     }
     defer rows.Close()
-    var users *pb.Users
+    users := &pb.Users{}
     for rows.Next() {
         var user pb.User
         err := rows.Scan(
