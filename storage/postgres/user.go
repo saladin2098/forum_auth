@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	pb "github.com/saladin2098/forum_auth/genproto"
@@ -28,7 +27,6 @@ func (s *UserStorage) RegisterUser(user *pb.User) (*pb.User, error) {
         email,
         password
 	) values($1,$2,$3,$4)`
-	log.Println(user)
 	_, err := s.db.Exec(query,
 		user.UserId,
 		user.UserName,
